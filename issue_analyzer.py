@@ -1,7 +1,7 @@
 # issue_analyzer.py
 from datetime import datetime, timedelta
 
-def get_open_issues(repo, labels=None, keywords=None, limit=10):
+def get_open_issues(repo, labels=None, keywords=None, limit=10, issue_templates=None):
     issues = repo.get_issues(state='open', labels=labels)
     filtered_issues = []
     
@@ -12,12 +12,12 @@ def get_open_issues(repo, labels=None, keywords=None, limit=10):
         if keywords and not any(keyword.lower() in issue.title.lower() or keyword.lower() in (issue.body or '').lower() for keyword in keywords):
             continue
         
-        score = score_issue(issue)
+        score = score_issue(issue, issue_templates)
         filtered_issues.append((issue, score))
     
     return sorted(filtered_issues, key=lambda x: x[1], reverse=True)
 
-def score_issue(issue):
+def score_issue(issue, issue_templates):
     score = 0
     
     if any(label.name.lower() in ['good first issue', 'help wanted'] for label in issue.labels):
@@ -41,16 +41,36 @@ def score_issue(issue):
     elif days_old < 90:
         score += 1
     
+    # Check if the issue follows a template
+    if issue_templates:
+        for template_name, template_content in issue_templates.items():
+            if all(section in (issue.body or '') for section in template_content.keys()):
+                score += 3
+                break
+
     return score
 
-def analyze_issue(repo, issue):
-    return {
+def analyze_issue(repo, issue, issue_templates):
+    analysis = {
         "title": issue.title or '',
         "body": issue.body or '',
         "labels": [l.name for l in issue.labels],
         "comments": [comment.body or '' for comment in issue.get_comments()],
         "mentioned_files": find_mentioned_files(issue.body or ''),
+        "follows_template": False,
+        "template_name": None,
+        "filled_sections": [],
     }
+
+    if issue_templates:
+        for template_name, template_content in issue_templates.items():
+            if all(section in analysis["body"] for section in template_content.keys()):
+                analysis["follows_template"] = True
+                analysis["template_name"] = template_name
+                analysis["filled_sections"] = list(template_content.keys())
+                break
+
+    return analysis
 
 def find_mentioned_files(text):
     if not text:

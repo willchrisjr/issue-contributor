@@ -1,6 +1,7 @@
 import re
 import json
 import base64
+import ast
 from collections import Counter
 from datetime import datetime, timedelta
 from utils import extract_section
@@ -21,7 +22,9 @@ class RepoAnalyzer:
             "file_analysis": self.analyze_repository_files(),
             "issue_pr_trends": self.analyze_issue_pr_trends(),
             "commit_history": self.analyze_commit_history(),
-            "dependency_analysis": self.analyze_dependencies()
+            "dependency_analysis": self.analyze_dependencies(),
+            "code_complexity": self.estimate_code_complexity(),
+            "issue_templates": self.analyze_issue_templates()
         }
         return self.analysis
 
@@ -221,6 +224,77 @@ class RepoAnalyzer:
         
         return analysis
 
+    def estimate_code_complexity(self):
+        complexity = {
+            "total_lines": 0,
+            "total_functions": 0,
+            "avg_function_complexity": 0,
+            "files_analyzed": 0
+        }
+
+        for content_file in self.repo.get_contents(""):
+            if content_file.type == "file" and content_file.name.endswith(".py"):
+                try:
+                    file_content = self.repo.get_contents(content_file.path).decoded_content.decode('utf-8')
+                    complexity["total_lines"] += len(file_content.splitlines())
+                    
+                    tree = ast.parse(file_content)
+                    functions = [node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)]
+                    complexity["total_functions"] += len(functions)
+                    
+                    file_complexity = sum(self.calculate_cyclomatic_complexity(func) for func in functions)
+                    if functions:
+                        complexity["avg_function_complexity"] += file_complexity / len(functions)
+                    
+                    complexity["files_analyzed"] += 1
+                except Exception as e:
+                    print(f"Error analyzing file {content_file.name}: {str(e)}")
+
+        if complexity["files_analyzed"] > 0:
+            complexity["avg_function_complexity"] /= complexity["files_analyzed"]
+
+        return complexity
+
+    def calculate_cyclomatic_complexity(self, func):
+        complexity = 1
+        for node in ast.walk(func):
+            if isinstance(node, (ast.If, ast.While, ast.For, ast.And, ast.Or)):
+                complexity += 1
+        return complexity
+
+    def analyze_issue_templates(self):
+        templates = {}
+        template_dir = '.github/ISSUE_TEMPLATE'
+        
+        try:
+            contents = self.repo.get_contents(template_dir)
+            for content_file in contents:
+                if content_file.name.endswith(('.md', '.yml', '.yaml')):
+                    template_content = content_file.decoded_content.decode('utf-8')
+                    template_name = content_file.name.rsplit('.', 1)[0]
+                    templates[template_name] = self.parse_issue_template(template_content)
+        except:
+            # If .github/ISSUE_TEMPLATE doesn't exist, check for individual files
+            for template_name in ['bug_report', 'feature_request']:
+                try:
+                    content = self.repo.get_contents(f'{template_dir}/{template_name}.md')
+                    template_content = content.decoded_content.decode('utf-8')
+                    templates[template_name] = self.parse_issue_template(template_content)
+                except:
+                    pass
+
+        return templates
+
+    def parse_issue_template(self, content):
+        sections = re.split(r'^##\s+', content, flags=re.MULTILINE)[1:]
+        parsed_template = {}
+        for section in sections:
+            lines = section.strip().split('\n')
+            section_name = lines[0].strip()
+            section_content = '\n'.join(lines[1:]).strip()
+            parsed_template[section_name] = section_content
+        return parsed_template
+
     def generate_markdown(self):
         md = f"# Contribution Guide for {self.analysis['name']}\n\n"
         md += f"## Repository Analysis\n"
@@ -315,4 +389,23 @@ class RepoAnalyzer:
             md += f"- No dependencies found or unable to parse dependency files.\n"
         
         md += "\n"
+        
+        md += f"## Code Complexity Analysis\n"
+        md += f"- Total Lines of Code: {self.analysis['code_complexity']['total_lines']}\n"
+        md += f"- Total Functions: {self.analysis['code_complexity']['total_functions']}\n"
+        md += f"- Average Function Complexity: {self.analysis['code_complexity']['avg_function_complexity']:.2f}\n"
+        md += f"- Files Analyzed: {self.analysis['code_complexity']['files_analyzed']}\n\n"
+
+        md += f"## Issue Templates Analysis\n"
+        if self.analysis['issue_templates']:
+            md += "The following issue templates were found:\n"
+            for template_name, template_content in self.analysis['issue_templates'].items():
+                md += f"- {template_name}\n"
+                md += "  Sections:\n"
+                for section_name in template_content.keys():
+                    md += f"  - {section_name}\n"
+        else:
+            md += "No issue templates were found in this repository.\n"
+        md += "\n"
+
         return md

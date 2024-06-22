@@ -19,18 +19,21 @@ def main():
     keywords = [keyword.strip() for keyword in keywords if keyword.strip()]
 
     print("Fetching and analyzing open issues...")
-    issues = get_open_issues(repo, labels=labels, keywords=keywords)
+    issues = get_open_issues(repo, labels=labels, keywords=keywords, issue_templates=repo_analysis['issue_templates'])
 
     with open("contribution_guide.md", "w") as f:
         f.write(analyzer.generate_markdown())
 
         f.write(f"## Open Issues (Sorted by Approachability)\n")
         for issue, score in issues:
-            issue_analysis = analyze_issue(repo, issue)
+            issue_analysis = analyze_issue(repo, issue, repo_analysis['issue_templates'])
             contribution_suggestion = suggest_contribution(repo, issue)
             f.write(f"### Issue #{issue.number}: {issue.title} (Score: {score})\n")
             f.write(f"Labels: {', '.join([label.name for label in issue.labels])}\n")
             f.write(f"Description: {(issue.body or '')[:100]}...\n")
+            if issue_analysis['follows_template']:
+                f.write(f"Follows template: {issue_analysis['template_name']}\n")
+                f.write(f"Filled sections: {', '.join(issue_analysis['filled_sections'])}\n")
             f.write(f"Contribution Suggestion:\n{contribution_suggestion}\n\n")
 
     print("Analysis complete. Results written to contribution_guide.md")
