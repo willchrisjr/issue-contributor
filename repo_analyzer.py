@@ -268,35 +268,23 @@ class RepoAnalyzer:
         
         try:
             contents = self.repo.get_contents(template_dir)
-            for content_file in contents:
-                if content_file.name.endswith(('.md', '.yml', '.yaml')):
-                    template_content = content_file.decoded_content.decode('utf-8')
-                    template_name = content_file.name.rsplit('.', 1)[0]
-                    templates[template_name] = self.parse_issue_template(template_content)
+            for content in contents:
+                if content.type == "file" and (content.name.endswith('.md') or content.name.endswith('.yml')):
+                    template_content = base64.b64decode(content.content).decode('utf-8')
+                    if content.name.endswith('.md'):
+                        sections = re.split(r'^##\s+', template_content, flags=re.MULTILINE)[1:]
+                        templates[content.name] = {section.split('\n', 1)[0]: section.split('\n', 1)[1].strip() for section in sections}
+                    elif content.name.endswith('.yml'):
+                        yaml_content = yaml.safe_load(template_content)
+                        templates[content.name] = {field['attributes']['label']: field['attributes']['description'] for field in yaml_content.get('body', []) if 'attributes' in field}
         except:
-            # If .github/ISSUE_TEMPLATE doesn't exist, check for individual files
-            for template_name in ['bug_report', 'feature_request']:
-                try:
-                    content = self.repo.get_contents(f'{template_dir}/{template_name}.md')
-                    template_content = content.decoded_content.decode('utf-8')
-                    templates[template_name] = self.parse_issue_template(template_content)
-                except:
-                    pass
-
+            pass
+        
         return templates
-
-    def parse_issue_template(self, content):
-        sections = re.split(r'^##\s+', content, flags=re.MULTILINE)[1:]
-        parsed_template = {}
-        for section in sections:
-            lines = section.strip().split('\n')
-            section_name = lines[0].strip()
-            section_content = '\n'.join(lines[1:]).strip()
-            parsed_template[section_name] = section_content
-        return parsed_template
 
     def generate_markdown(self):
         md = f"# Contribution Guide for {self.analysis['name']}\n\n"
+        
         md += f"## Repository Analysis\n"
         md += f"- Name: {self.analysis['name']}\n"
         md += f"- Description: {self.analysis['description']}\n"
