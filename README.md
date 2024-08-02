@@ -1,6 +1,6 @@
 # Issue Contributor
 
-Issue Contributor is a Python-based tool designed to analyze GitHub repositories and provide tailored guidance for potential contributors. The tool aims to lower the barrier to entry for open-source contributions by offering detailed insights into repositories and their open issues.
+Issue Contributor is a Python-based tool designed to analyze GitHub repositories and provide guidance for potential contributors. The tool aims to lower the barrier to entry for open-source contributions by offering detailed insights into repositories and their open issues.
 
 ## Project Overview
 
